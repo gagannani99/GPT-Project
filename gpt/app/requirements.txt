@@ -1,0 +1,6 @@
+fastapi[all]
+uvicorn
+chromadb
+sentence-transformers
+ollama
+python-multipart
