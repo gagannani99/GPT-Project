@@ -1,7 +1,7 @@
 import os
 import ollama
 from embeder import get_context
-from utils.scraper import get_company_data
+from scraper import get_company_data
 
 # Set up the Ollama client
 ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
