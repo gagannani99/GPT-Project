@@ -4,3 +4,5 @@ chromadb
 sentence-transformers
 ollama
 python-multipart
+beautifulsoup4
+requests

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from embeder import collection, embedding_model
 from rag_chain import ask_qwen
+from scraper import crawl_and_embed_site
 
 app = FastAPI(title="AllianceGPT API")
 
@@ -32,30 +33,11 @@ def ask_question(data: AskRequest):
     answer = ask_qwen(question)
     return {"answer": answer}
 
-@app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    if not file.filename.endswith(".txt"):
-        raise HTTPException(status_code=400, detail="Only .txt files are supported")
-
-    try:
-        content = await file.read()
-        content = content.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Unsupported file encoding")
-
-    chunks = [content[i:i+512] for i in range(0, len(content), 512)]
-    existing_ids = set(collection.get().get("ids", []))
-
-    new_chunks = 0
-    for chunk in chunks:
-        id_hash = hashlib.md5(chunk.encode("utf-8")).hexdigest()
-        if id_hash not in existing_ids:
-            print("\n🧩 New Chunk Preview:", chunk[:200])
-            emb = embedding_model.encode(chunk).tolist()
-            collection.add(documents=[chunk], embeddings=[emb], ids=[id_hash])
-            new_chunks += 1
-
-    return {"message": f"{new_chunks} new unique chunks added from {file.filename}."}
+@app.post("/crawl")
+def crawl_website():
+    url = "https://allianceproit.com/"
+    chunks_added = crawl_and_embed_site(url)
+    return {"message": f"{chunks_added} new unique chunks added from crawling {url}."}
 
 @app.get("/vectors")
 def get_all_vectors():
