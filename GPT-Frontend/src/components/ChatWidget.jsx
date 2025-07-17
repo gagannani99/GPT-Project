@@ -1,3 +1,4 @@
+// ChatWidget.jsx
 import { useState, useRef, useEffect } from "react";
 import { FiMessageSquare, FiX, FiSend } from "react-icons/fi";
 import axios from "axios";
@@ -5,17 +6,23 @@ import "./ChatWidget.css";
 import { loginWithMicrosoft, msalInstance } from "../authService";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faRightFromBracket, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
+import { faEnvelope, faPhone, faReply } from "@fortawesome/free-solid-svg-icons";
 
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [role, setRole] = useState(null);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
   const [userRole, setUserRole] = useState(null);
+  const [username, setUsername] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [message, setMessage] = useState("");
   const [chat, setChat] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const [companyName, setCompanyName] = useState("");
+  const [personName, setPersonName] = useState("");
+  const [problemInput, setProblemInput] = useState("");
+  const [selectedOption, setSelectedOption] = useState("");
+  const [salesOutput, setSalesOutput] = useState("");
 
   const chatEndRef = useRef(null);
 
@@ -45,7 +52,6 @@ const ChatWidget = () => {
     } finally {
       setRole(null);
       setUsername("");
-      setPassword("");
       setLoginError("");
       setUserRole(null);
       setChat([]);
@@ -56,7 +62,6 @@ const ChatWidget = () => {
   const handleBack = () => {
     setRole(null);
     setUsername("");
-    setPassword("");
     setLoginError("");
     setUserRole(null);
   };
@@ -66,34 +71,24 @@ const ChatWidget = () => {
     if (!message.trim()) return;
 
     setChat((prev) => [...prev, { sender: "user", text: message, isList: false }]);
-    const userMsg = message;
     setMessage("");
     setIsLoading(true);
 
     try {
       const res = await axios.post("http://localhost:5000/ask", {
-        question: userMsg,
+        question: message,
+        user_type: userRole || "customer", // ✅ Include user type
       });
 
       let reply = res.data.answer || "No response.";
-
-      const lines = reply
-        .split("\n")
-        .map(line => line.trim())
-        .filter(Boolean);
-
-      const shouldBeBullets =
-        lines.length >= 2 &&
-        lines.every(
-          line => line.length < 200 && /^[-*•\dA-Z]/.test(line)
-        );
+      const lines = reply.split("\n").map((line) => line.trim()).filter(Boolean);
+      const shouldBeBullets = lines.length >= 2 && lines.every((line) => line.length < 200 && /^[-*•\dA-Z]/.test(line));
 
       if (shouldBeBullets) {
         setChat((prev) => [...prev, { sender: "bot", text: lines, isList: true }]);
       } else {
         setChat((prev) => [...prev, { sender: "bot", text: reply, isList: false }]);
       }
-
     } catch (err) {
       setChat((prev) => [
         ...prev,
@@ -101,6 +96,28 @@ const ChatWidget = () => {
       ]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSalesGenerate = async () => {
+    if (!companyName && !problemInput) return;
+
+    const question = `
+Company: ${companyName || "N/A"}
+Person: ${personName || "N/A"}
+Problem & Solution: ${problemInput}
+Request: ${selectedOption || "General Info"}
+    `.trim();
+
+    try {
+      const res = await axios.post("http://localhost:5000/ask", {
+        question,
+        user_type: "employee", // ✅ Required
+        selectedOptions: selectedOption ? [selectedOption] : [], // ✅ Must be an array
+      });
+      setSalesOutput(res.data.answer || "No response.");
+    } catch (err) {
+      setSalesOutput("❌ Failed to generate response.");
     }
   };
 
@@ -113,19 +130,19 @@ const ChatWidget = () => {
       )}
 
       {isOpen && (
-        <div className="chat-popup">
+        <div className={`chat-popup ${userRole === "employee" ? "sales-tool-popup" : ""}`}>
           <div className="chat-header">
             <div className="chat-title">
               {role && (
-                <button className="back-icon" onClick={handleBack} title="Back">
+                <button className="back-icon" onClick={handleBack}>
                   <FontAwesomeIcon icon={faArrowLeft} />
                 </button>
               )}
-              <h3>💬 Alliance GPT</h3>
+              <h3>{userRole === "employee" ? "📊 Alli Sales Tool" : "💬 Alliance GPT"}</h3>
             </div>
             <div className="header-actions">
               {userRole === "employee" && (
-                <button className="logout-btn" onClick={handleLogout} title="Logout">
+                <button className="logout-btn" onClick={handleLogout}>
                   <FontAwesomeIcon icon={faRightFromBracket} />
                 </button>
               )}
@@ -149,7 +166,63 @@ const ChatWidget = () => {
             </div>
           )}
 
-          {(role === "customer" || userRole === "employee") && (
+          {userRole === "employee" && (
+            <div className="chatbox-wrapper">
+              <div className="sales-form">
+                <div className="name-fields-vertical">
+                  <input
+                    type="text"
+                    placeholder="Company Name *"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Person Name (optional)"
+                    value={personName}
+                    onChange={(e) => setPersonName(e.target.value)}
+                  />
+                </div>
+
+                <textarea
+                  placeholder="Describe the problem and your solution..."
+                  value={problemInput}
+                  onChange={(e) => setProblemInput(e.target.value)}
+                  className="problem-textarea"
+                ></textarea>
+
+                <div className="icon-options">
+                  <FontAwesomeIcon
+                    icon={faEnvelope}
+                    onClick={() => setSelectedOption("Email")}
+                    className={selectedOption === "Email" ? "icon-selected" : ""}
+                  />
+                  <FontAwesomeIcon
+                    icon={faPhone}
+                    onClick={() => setSelectedOption("Telephonic Pitch")}
+                    className={selectedOption === "Telephonic Pitch" ? "icon-selected" : ""}
+                  />
+                  <FontAwesomeIcon
+                    icon={faReply}
+                    onClick={() => setSelectedOption("Follow-up Email")}
+                    className={selectedOption === "Follow-up Email" ? "icon-selected" : ""}
+                  />
+                </div>
+
+                <button className="generate-btn" onClick={handleSalesGenerate}>
+                  Generate
+                </button>
+
+                {salesOutput && (
+                  <div className="chat-message bot-msg" style={{ marginTop: "1rem" }}>
+                    {salesOutput}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {role === "customer" && (
             <div className="chatbox-wrapper">
               <div className="chat-messages">
                 {chat.map((msg, idx) => (
@@ -178,8 +251,6 @@ const ChatWidget = () => {
                     </div>
                   </div>
                 )}
-
-                {/* Auto scroll target */}
                 <div ref={chatEndRef} />
               </div>
 
@@ -190,7 +261,6 @@ const ChatWidget = () => {
                   placeholder="Type your message..."
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  required
                 />
                 <button type="submit" className="send-icon-btn" aria-label="Send">
                   <FiSend size={20} />

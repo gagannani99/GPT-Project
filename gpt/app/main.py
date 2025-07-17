@@ -1,15 +1,15 @@
-import hashlib
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from embeder import collection, embedding_model
+from typing import List, Optional
+from embeder import collection
 from rag_chain import ask_qwen
 from scraper import crawl_and_embed_site
 
 app = FastAPI(title="AllianceGPT API")
 
-# CORS 
+# CORS setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,27 +18,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ----------- Request Model -----------
 class AskRequest(BaseModel):
     question: str
+    user_type: str  # "employee" or "customer"
+    selectedOptions: Optional[List[str]] = []  # Used only for employee
 
+# ----------- Root Endpoint -----------
 @app.get("/")
 def read_root():
     return {"message": "AllianceGPT is live!"}
 
+# ----------- ASK Endpoint -----------
 @app.post("/ask")
 def ask_question(data: AskRequest):
     question = data.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Missing question")
-    answer = ask_qwen(question)
+
+    if data.user_type == "employee":
+        # Alli Sales Tool Mode (with selectedOptions)
+        answer = ask_qwen(question, selected_options=data.selectedOptions)
+    elif data.user_type == "customer":
+        # Alliance GPT Mode
+        answer = ask_qwen(question)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid user_type. Use 'employee' or 'customer'.")
+
     return {"answer": answer}
 
+# ----------- Crawl AlliancePro Site -----------
 @app.post("/crawl")
 def crawl_website():
     url = "https://allianceproit.com/"
     chunks_added = crawl_and_embed_site(url)
     return {"message": f"{chunks_added} new unique chunks added from crawling {url}."}
 
+# ----------- Debug: See All Vectors -----------
 @app.get("/vectors")
 def get_all_vectors():
     try:
