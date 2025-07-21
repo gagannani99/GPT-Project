@@ -1,12 +1,17 @@
-// ChatWidget.jsx
 import { useState, useRef, useEffect } from "react";
 import { FiMessageSquare, FiX, FiSend } from "react-icons/fi";
 import axios from "axios";
 import "./ChatWidget.css";
 import { loginWithMicrosoft, msalInstance } from "../authService";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faRightFromBracket, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
-import { faEnvelope, faPhone, faReply } from "@fortawesome/free-solid-svg-icons";
+import {
+  faRightFromBracket,
+  faArrowLeft,
+  faEnvelope,
+  faPhone,
+  faReply,
+  faClipboard,
+} from "@fortawesome/free-solid-svg-icons";
 
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -77,7 +82,7 @@ const ChatWidget = () => {
     try {
       const res = await axios.post("http://localhost:5000/ask", {
         question: message,
-        user_type: userRole || "customer", // ✅ Include user type
+        user_type: userRole || "customer",
       });
 
       let reply = res.data.answer || "No response.";
@@ -112,8 +117,8 @@ Request: ${selectedOption || "General Info"}
     try {
       const res = await axios.post("http://localhost:5000/ask", {
         question,
-        user_type: "employee", // ✅ Required
-        selectedOptions: selectedOption ? [selectedOption] : [], // ✅ Must be an array
+        user_type: "employee",
+        selectedOptions: selectedOption ? [selectedOption] : [],
       });
       setSalesOutput(res.data.answer || "No response.");
     } catch (err) {
@@ -153,7 +158,7 @@ Request: ${selectedOption || "General Info"}
           </div>
 
           {!role && (
-            <div className="role-selection">
+            <div className="role-selection centered-role-selection">
               <button onClick={handleEmployeeClick}>Employee</button>
               <button onClick={() => setRole("customer")}>Customer</button>
             </div>
@@ -167,7 +172,7 @@ Request: ${selectedOption || "General Info"}
           )}
 
           {userRole === "employee" && (
-            <div className="chatbox-wrapper">
+            <div className="chatbox-wrapper fixed-chatbox">
               <div className="sales-form">
                 <div className="name-fields-vertical">
                   <input
@@ -214,7 +219,14 @@ Request: ${selectedOption || "General Info"}
                 </button>
 
                 {salesOutput && (
-                  <div className="chat-message bot-msg" style={{ marginTop: "1rem" }}>
+                  <div className="chat-message bot-msg" style={{ marginTop: "1rem", position: "relative" }}>
+                    <button
+                      className="copy-btn"
+                      onClick={() => navigator.clipboard.writeText(salesOutput)}
+                      title="Copy"
+                    >
+                      <FontAwesomeIcon icon={faClipboard} />
+                    </button>
                     {salesOutput}
                   </div>
                 )}
@@ -223,13 +235,28 @@ Request: ${selectedOption || "General Info"}
           )}
 
           {role === "customer" && (
-            <div className="chatbox-wrapper">
+            <div className="chatbox-wrapper fixed-chatbox">
               <div className="chat-messages">
                 {chat.map((msg, idx) => (
                   <div
                     key={idx}
                     className={`chat-message ${msg.sender === "user" ? "user-msg" : "bot-msg"}`}
+                    style={{ position: "relative" }}
                   >
+                    {msg.sender === "bot" && (
+                      <button
+                        className="copy-btn"
+                        onClick={() => {
+                          const textToCopy = Array.isArray(msg.text)
+                            ? msg.text.join("\n")
+                            : msg.text;
+                          navigator.clipboard.writeText(textToCopy);
+                        }}
+                        title="Copy"
+                      >
+                        <FontAwesomeIcon icon={faClipboard} />
+                      </button>
+                    )}
                     {msg.isList ? (
                       <ul className="bot-list">
                         {msg.text.map((item, i) => (

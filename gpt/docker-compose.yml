@@ -1,43 +1,18 @@
 version: '3.8'
 
 services:
-  ollama:
-    image: ollama/ollama:0.9.0
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-
-  llama3-preload:
-    image: curlimages/curl
-    depends_on: [ ollama ]
-    entrypoint: >
-      sh -c "
-        sleep 10 &&
-        curl -X POST http://ollama:11434/api/pull -d '{\"name\":\"llama3:8b\"}'
-      "
-    restart: "no"
-
   fastapi:
     image: python:3.12-slim
-    depends_on:
-      - ollama
     working_dir: /app
     volumes:
       - ./app:/app
       - ./documents:/documents
     ports:
       - "5000:5000"
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
+    env_file:
+      - .env
     command: >
       bash -c "
         pip install --no-cache-dir -r requirements.txt &&
-        sleep 5 &&
         uvicorn main:app --host 0.0.0.0 --port 5000 --reload
       "
-
-volumes:
-  ollama-data:
