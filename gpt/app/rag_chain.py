@@ -1,72 +1,102 @@
-import os
-import ollama
-from embeder import get_context
-from scraper import get_company_data
+import re
+from app.azure_openai import chat_with_azure
+from app.scraper import get_company_data
 
-# Set up the Ollama client
-ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-ollama_client = ollama.Client(host=ollama_host)
+YOUR_COMPANY_NAME = "Alliance Pro"
 
-# Update with your actual company name (case-insensitive match)
-YOUR_COMPANY_NAME = "Alliance Solutions"
+def is_company_name_only(query: str) -> bool:
+    return (
+        len(query.strip().split()) <= 4
+        and not re.search(r"\b(who|what|how|should|can|will|when|where|does|is|are)\b", query, re.IGNORECASE)
+    )
 
-def ask_qwen(question):
-    lower_q = question.lower()
+def extract_target_company(question):
+    match = re.search(r"(?:to|with|about|for)\s+([A-Z][\w\s&\-]+)", question, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return None
 
-    # Case 1: Question is about your own company
-    if YOUR_COMPANY_NAME.lower() in lower_q or "your company" in lower_q or "about your services" in lower_q:
-        print("📂 Using internal document context (ChromaDB)")
-        local_context = get_context(question)
-        if not local_context.strip():
-            return "I'm sorry, I couldn't find details in our internal documents."
+def ask_qwen(question, role="customer"):
+    question = question.strip()
+
+    # ✅ EMPLOYEE ONLY: If question looks like just a company name
+    if role == "employee" and is_company_name_only(question):
+        scraped_text = get_company_data(question)
+
+        if not scraped_text.strip():
+            return {
+                "answer": f"❌ Couldn’t find enough public data for '{question}'."
+            }
 
         prompt = f"""
-You are Alliance GPT, an internal AI assistant.
+You are Alliance GPT, an assistant for Alliance Pro employees.
 
-Answer the following question based ONLY on the internal documentation:
+Summarize the company '{question}' in 5-6 concise and informative lines using only the context below.
 
 Context:
-{local_context}
+{scraped_text}
+"""
+        answer = chat_with_azure(prompt)
+        return {"answer": answer}
+
+    # ✅ CUSTOMER FLOW
+    if role == "customer":
+        scraped_text = get_company_data(YOUR_COMPANY_NAME)
+
+        if not scraped_text.strip():
+            return {
+                "answer": "❌ Couldn't find enough information about Alliance Pro.",
+            }
+
+        prompt = f"""
+You are Alliance GPT, a chatbot for Alliance Pro.
+
+Use the context below to answer the user's question in a short, friendly, and informative manner.
+
+Context:
+{scraped_text}
 
 Question:
 {question}
-
-Instructions:
-- Be factual, short, and concise.
-- Do not guess if the info is not in context.
 """
-        response = ollama_client.chat(
-            model="llama3:8b",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response['message']['content']
+        answer = chat_with_azure(prompt)
+        return {
+            "answer": answer
+        }
 
-    # Case 2: Question about a collaboration/project with other companies
+    # ✅ EMPLOYEE FLOW (Collaboration-style queries)
     else:
-        print("🌐 Using web scraping for collaboration/project info")
-        scraped_info = get_company_data(question)
+        target_company = extract_target_company(question)
 
-        if not scraped_info.strip():
-            return "Sorry, I couldn't find any public information about that collaboration."
+        if not target_company:
+            return {
+                "error": "❌ Could not detect the other company in your query. Please mention a company name clearly."
+            }
 
-        prompt = f"""
-You are Alliance GPT, an AI assistant.
+        scraped_text = get_company_data(target_company)
 
-Answer the question based on public web data provided below:
+        if not scraped_text.strip():
+            return {
+                "error": f"❌ No sufficient public data found for '{target_company}'."
+            }
+
+        def run_prompt(task_description):
+            prompt = f"""
+You are Alliance GPT, an assistant for Alliance Pro employees.
+
+Your task: {task_description}
+
+Use only the following context (scraped data about {target_company}) to complete your response:
 
 Context:
-{scraped_info}
-
-Question:
-{question}
-
-Instructions:
-- Be specific about the collaboration or project.
-- Mention technologies, timelines, company names if available.
-- If no relevant data, say you couldn’t find anything concrete.
+{scraped_text}
 """
-        response = ollama_client.chat(
-            model="llama3:8b",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response['message']['content']
+            return chat_with_azure(prompt)
+
+        return {
+            "employee_special_output": {
+                "about": run_prompt(f"Summarize {target_company} in 5-6 lines."),
+                "email": run_prompt(f"Write a follow-up email proposing how Alliance Pro's services can help {target_company}."),
+                "pitch": run_prompt(f"Write a short phone pitch to convince {target_company} to explore a partnership.")
+            }
+        }

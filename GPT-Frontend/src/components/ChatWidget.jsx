@@ -5,12 +5,13 @@ import "./ChatWidget.css";
 import { loginWithMicrosoft, msalInstance } from "../authService";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faRightFromBracket, faArrowLeft } from "@fortawesome/free-solid-svg-icons";
+import { FiCopy, FiCheck } from "react-icons/fi";
+
 
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [role, setRole] = useState(null);
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [userRole, setUserRole] = useState(null);
   const [message, setMessage] = useState("");
@@ -45,7 +46,6 @@ const ChatWidget = () => {
     } finally {
       setRole(null);
       setUsername("");
-      setPassword("");
       setLoginError("");
       setUserRole(null);
       setChat([]);
@@ -56,9 +56,16 @@ const ChatWidget = () => {
   const handleBack = () => {
     setRole(null);
     setUsername("");
-    setPassword("");
     setLoginError("");
     setUserRole(null);
+  };
+
+  const [copiedField, setCopiedField] = useState("");
+
+  const handleCopy = (text, fieldName) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(""), 2000); // Reset after 2s
   };
 
   const handleSubmit = async (e) => {
@@ -73,28 +80,42 @@ const ChatWidget = () => {
     try {
       const res = await axios.post("http://localhost:8000/ask", {
         question: userMsg,
+        role: userRole || role || "customer",
       });
 
-      let reply = res.data.answer || "No response.";
-
-      const lines = reply
-        .split("\n")
-        .map(line => line.trim())
-        .filter(Boolean);
-
-      const shouldBeBullets =
-        lines.length >= 2 &&
-        lines.every(
-          line => line.length < 200 && /^[-*•\dA-Z]/.test(line)
-        );
-
-      if (shouldBeBullets) {
-        setChat((prev) => [...prev, { sender: "bot", text: lines, isList: true }]);
+      if (res.data.employee_special_output) {
+        const { about, email, pitch } = res.data.employee_special_output;
+        setChat((prev) => [
+          ...prev,
+          {
+            sender: "employee-special",
+            data: {
+              about,
+              email,
+              pitch,
+            },
+          },
+        ]);
       } else {
-        setChat((prev) => [...prev, { sender: "bot", text: reply, isList: false }]);
-      }
+        let reply = res.data.answer || "No response.";
 
+        const lines = reply
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+
+        const shouldBeBullets =
+          lines.length >= 2 &&
+          lines.every((line) => line.length < 200 && /^[-*•\dA-Z]/.test(line));
+
+        if (shouldBeBullets) {
+          setChat((prev) => [...prev, { sender: "bot", text: lines, isList: true }]);
+        } else {
+          setChat((prev) => [...prev, { sender: "bot", text: reply, isList: false }]);
+        }
+      }
     } catch (err) {
+      console.error(err);
       setChat((prev) => [
         ...prev,
         { sender: "bot", text: "❌ Failed to fetch response.", isList: false },
@@ -157,7 +178,42 @@ const ChatWidget = () => {
                     key={idx}
                     className={`chat-message ${msg.sender === "user" ? "user-msg" : "bot-msg"}`}
                   >
-                    {msg.isList ? (
+                    {msg.sender === "employee-special" ? (
+                      <div className="structured-output">
+                      <div className="section">
+                        <strong>📘 About the Company:</strong>
+                        <p>{msg.data.about}</p>
+                      </div>
+
+                      <div className="section">
+                        <div className="copy-header">
+                          <strong>📧 Follow-up Email:</strong>
+                          <button
+                            className="copy-btn"
+                            onClick={() => handleCopy(msg.data.email, "email")}
+                            title="Copy Email"
+                          >
+                            {copiedField === "email" ? <FiCheck /> : <FiCopy />}
+                          </button>
+                        </div>
+                        <p>{msg.data.email}</p>
+                      </div>
+
+                      <div className="section">
+                        <div className="copy-header">
+                          <strong>📞 Telephonic Pitch:</strong>
+                          <button
+                            className="copy-btn"
+                            onClick={() => handleCopy(msg.data.pitch, "pitch")}
+                            title="Copy Pitch"
+                          >
+                            {copiedField === "pitch" ? <FiCheck /> : <FiCopy />}
+                          </button>
+                        </div>
+                        <p>{msg.data.pitch}</p>
+                      </div>
+                      </div>
+                    ) : msg.isList ? (
                       <ul className="bot-list">
                         {msg.text.map((item, i) => (
                           <li key={i}>{item.replace(/^[-*•\d.]+\s*/, "")}</li>
@@ -179,7 +235,6 @@ const ChatWidget = () => {
                   </div>
                 )}
 
-                {/* Auto scroll target */}
                 <div ref={chatEndRef} />
               </div>
 

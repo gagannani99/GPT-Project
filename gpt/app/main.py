@@ -1,37 +1,44 @@
 import hashlib
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from embeder import collection, embedding_model
-from rag_chain import ask_qwen
+from app.embeder import collection, embedding_model
+from app.rag_chain import ask_qwen
 
 app = FastAPI(title="AllianceGPT API")
 
-# CORS 
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # You can replace * with your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Pydantic request model
 class AskRequest(BaseModel):
     question: str
+    role: str = "customer"  # Optional field with default
 
 @app.get("/")
 def read_root():
     return {"message": "AllianceGPT is live!"}
 
+# ✅ Updated /ask endpoint
 @app.post("/ask")
 def ask_question(data: AskRequest):
     question = data.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="Missing question")
-    answer = ask_qwen(question)
-    return {"answer": answer}
 
+    role = data.role.lower() if data.role else "customer"
+    result = ask_qwen(question, role=role)
+
+    return result
+
+# ✅ File upload to embed .txt documents
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     if not file.filename.endswith(".txt"):
@@ -43,7 +50,7 @@ async def upload_file(file: UploadFile = File(...)):
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="Unsupported file encoding")
 
-    chunks = [content[i:i+512] for i in range(0, len(content), 512)]
+    chunks = [content[i:i + 512] for i in range(0, len(content), 512)]
     existing_ids = set(collection.get().get("ids", []))
 
     new_chunks = 0
@@ -57,6 +64,7 @@ async def upload_file(file: UploadFile = File(...)):
 
     return {"message": f"{new_chunks} new unique chunks added from {file.filename}."}
 
+# ✅ Check current embeddings
 @app.get("/vectors")
 def get_all_vectors():
     try:

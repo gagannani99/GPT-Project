@@ -2,5 +2,6 @@ fastapi[all]
 uvicorn
 chromadb
 sentence-transformers
-ollama
 python-multipart
+openai>=1.0.0
+python-dotenv
